@@ -1,0 +1,14 @@
+public enum CarComponentType {
+    ROTOR,
+    BELT_TENSIONER,
+    CAMSHAFT,
+    FLYWHEEL,
+    EXHAUST_MANIFOLD,
+    CLUTCH_PLATE,
+    ENGINE_BLOCK,
+    ALTERNATOR,
+    WATER_PUMP,
+    THERMOSTAT,
+    INTAKE_MANIFOLD,
+    OIL_FILTER
+}

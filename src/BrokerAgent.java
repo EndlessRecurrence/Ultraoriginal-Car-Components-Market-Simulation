@@ -21,7 +21,7 @@ public class BrokerAgent extends Agent {
         this.suppliers = new ArrayList<>();
         SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
         initializationBehaviour.addSubBehaviour(createDfServiceRegistrationBehaviour());
-        initializationBehaviour.addSubBehaviour(createSupplierRegistrationListeningBehaviour());
+        initializationBehaviour.addSubBehaviour(createRequestHandlingBehaviour());
         addBehaviour(initializationBehaviour);
     }
 
@@ -46,17 +46,33 @@ public class BrokerAgent extends Agent {
         };
     }
 
-    private Behaviour createSupplierRegistrationListeningBehaviour() {
+    private void handleSupplierSubscriptionRequest(ACLMessage request) {
+        suppliers.add(request.getSender());
+        System.out.println("Broker " + getLocalName() + " registered supplier " + request.getSender().getLocalName());
+        System.out.println("Broker " + getLocalName() + " received registrations from these suppliers:");
+        Stream.of(suppliers).forEach(System.out::println);
+    }
+
+    private void handleUnknownRequestMessage(ACLMessage request) {
+        ACLMessage response = new ACLMessage(ACLMessage.NOT_UNDERSTOOD);
+        response.addReceiver(request.getSender());
+        send(response);
+    }
+
+    private void handleRequest(ACLMessage request) {
+        switch (request.getPerformative()) {
+            case ACLMessage.SUBSCRIBE -> handleSupplierSubscriptionRequest(request);
+            default -> handleUnknownRequestMessage(request);
+        }
+    }
+
+    private Behaviour createRequestHandlingBehaviour() {
         return new CyclicBehaviour() {
             @Override
             public void action() {
-                MessageTemplate messageTemplate = MessageTemplate.MatchPerformative(ACLMessage.SUBSCRIBE);
-                ACLMessage supplierRegistration = myAgent.receive(messageTemplate);
-                if (supplierRegistration != null) {
-                    suppliers.add(supplierRegistration.getSender());
-                    System.out.println("Broker " + getLocalName() + " registered supplier " + supplierRegistration.getSender().getLocalName());
-                    System.out.println("Broker " + getLocalName() + " received registrations from these suppliers:");
-                    Stream.of(suppliers).forEach(System.out::println);
+                ACLMessage message = myAgent.receive();
+                if (message != null) {
+                    handleRequest(message);
                 } else {
                     block();
                 }
