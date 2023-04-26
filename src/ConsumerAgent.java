@@ -14,8 +14,13 @@ public class ConsumerAgent extends Agent {
 
     protected void setup() {
         System.out.println("Consumer agent " + getLocalName() + " has started...");
+        SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
+        initializationBehaviour.addSubBehaviour(createBrokerSearchBehaviour());
+        addBehaviour(initializationBehaviour);
+    }
 
-        addBehaviour(new WakerBehaviour(this, 3000) {
+    private Behaviour createBrokerSearchBehaviour() {
+        return new WakerBehaviour(this, 2000) {
             @Override
             protected void onWake() {
                 DFAgentDescription template = new DFAgentDescription();
@@ -31,11 +36,10 @@ public class ConsumerAgent extends Agent {
                     System.out.println("Agents detected by " + getLocalName() + ":");
                     Stream.of(brokerAgents).forEach(System.out::println);
                 } catch (FIPAException fe) {
-                    System.out.println("CATCH BRANCH");
                     fe.printStackTrace();
                 }
             }
-        });
+        };
     }
 
     protected void takeDown() {

@@ -14,7 +14,14 @@ public class SupplierAgent extends Agent {
 
     protected void setup() {
         System.out.println("Supplier agent " + getLocalName() + " has started...");
-        addBehaviour(new WakerBehaviour(this, 3000) {
+        SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
+        initializationBehaviour.addSubBehaviour(createBrokerSearchBehaviour());
+        initializationBehaviour.addSubBehaviour(createBrokerRegistrationBehaviour());
+        addBehaviour(initializationBehaviour);
+    }
+
+    private Behaviour createBrokerSearchBehaviour() {
+        return new WakerBehaviour(this, 2000) {
             @Override
             protected void onWake() {
                 DFAgentDescription template = new DFAgentDescription();
@@ -33,7 +40,20 @@ public class SupplierAgent extends Agent {
                     fe.printStackTrace();
                 }
             }
-        });
+        };
+    }
+
+    private Behaviour createBrokerRegistrationBehaviour() {
+        return new WakerBehaviour(this, 2000) {
+            @Override
+            protected void onWake() {
+                ACLMessage registrationMessage = new ACLMessage(ACLMessage.SUBSCRIBE);
+                registrationMessage.addReceiver(brokerAgents[0]);
+                registrationMessage.setContent("supplier_registration");
+                send(registrationMessage);
+                System.out.println("Supplier " + getLocalName() + " has sent registration to the broker.");
+            }
+        };
     }
 
     protected void takeDown() {
