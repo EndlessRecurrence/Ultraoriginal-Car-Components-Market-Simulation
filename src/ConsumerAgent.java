@@ -125,10 +125,19 @@ public class ConsumerAgent extends Agent {
 
             System.out.println("Consumer " + getLocalName() + " sent " + componentTypeAsString + " offer accept message to broker " + brokerAgents[0].getLocalName());
 
-            MessageTemplate template = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
+            MessageTemplate template = MessageTemplate.MatchPerformative(ACLMessage.AGREE);
             ACLMessage boughtProductAsAclMessage = blockingReceive(template);
-            System.out.println("Consumer " + getLocalName() + " received bought " + componentTypeAsString + " from broker " + brokerAgents[0].getLocalName());
 
+            serializedObjectBytes = Base64.getDecoder().decode(boughtProductAsAclMessage.getContent().getBytes(StandardCharsets.UTF_8));
+            byteIn = new ByteArrayInputStream(serializedObjectBytes);
+            objectIn = new ObjectInputStream(byteIn);
+            ComponentDeliveryUnit deliveryUnitMessage = (ComponentDeliveryUnit) objectIn.readObject();
+            objectIn.close();
+            byteIn.close();
+
+            ownedCarComponents.add(deliveryUnitMessage.getComponent());
+            System.out.println("Consumer " + getLocalName() + " received bought " + deliveryUnitMessage.getComponent().type() + " sent by " + deliveryUnitMessage.getSource().getLocalName() + " through broker " + brokerAgents[0].getLocalName());
+            System.out.println(deliveryUnitMessage.getComponent());
         } catch (IOException e) {
             e.printStackTrace();
             throw new RuntimeException(e);

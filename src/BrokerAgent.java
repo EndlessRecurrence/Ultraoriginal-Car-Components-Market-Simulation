@@ -128,9 +128,21 @@ public class BrokerAgent extends Agent {
         send(productRetrievalRequestMessage);
     }
 
-    private void handleDeliveryUnitFromSupplier(ACLMessage message) {
+    private void handleDeliveryUnitFromSupplier(ACLMessage message) throws IOException, ClassNotFoundException {
         System.out.println("Broker " + getLocalName() + " received delivery unit from supplier " + message.getSender().getLocalName());
 
+        byte[] serializedObjectBytes = Base64.getDecoder().decode(message.getContent().getBytes(StandardCharsets.UTF_8));
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
+        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
+        ComponentDeliveryUnit deliveryUnitMessage = (ComponentDeliveryUnit) objectIn.readObject();
+        objectIn.close();
+        byteIn.close();
+
+        message.removeReceiver(this.getAID());
+        message.addReceiver(deliveryUnitMessage.getDestination());
+        message.setPerformative(ACLMessage.AGREE);
+        send(message);
+        System.out.println("Broker " + getLocalName() + " sent delivery unit from supplier " + message.getSender().getLocalName() + " to consumer " + deliveryUnitMessage.getDestination().getLocalName());
     }
 
     private void handleUnknownRequestMessage(ACLMessage request) {
