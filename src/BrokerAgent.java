@@ -53,6 +53,10 @@ public class BrokerAgent extends Agent {
         Stream.of(suppliers).forEach(System.out::println);
     }
 
+    private void handleConsumerPriceRequest(ACLMessage request) {
+        System.out.println("Broker " + getLocalName() + " got a call-for-proposal price request from " + request.getSender().getLocalName());
+    }
+
     private void handleUnknownRequestMessage(ACLMessage request) {
         ACLMessage response = new ACLMessage(ACLMessage.NOT_UNDERSTOOD);
         response.addReceiver(request.getSender());
@@ -62,6 +66,7 @@ public class BrokerAgent extends Agent {
     private void handleRequest(ACLMessage request) {
         switch (request.getPerformative()) {
             case ACLMessage.SUBSCRIBE -> handleSupplierSubscriptionRequest(request);
+            case ACLMessage.CFP -> handleConsumerPriceRequest(request);
             default -> handleUnknownRequestMessage(request);
         }
     }

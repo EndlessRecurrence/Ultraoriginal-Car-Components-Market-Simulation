@@ -135,10 +135,10 @@ public class SupplierAgent extends Agent {
                 referenceComponentPrices.entrySet().stream()
                         .map(typePricePair -> new CarComponent(typePricePair.getKey(), generateUpdatedPrice(typePricePair.getKey(), typePricePair.getValue())))
                         .forEach(carComponent -> prices.put(carComponent.type(), carComponent.price()));
-                System.out.println("==============================================================");
-                System.out.println(getLocalName() + "'s randomly updated prices:");
-                Stream.of(prices).forEach(System.out::println);
-                System.out.println("==============================================================");
+                String listOfUpdatedPricesAsString = Stream.of(prices)
+                        .map(Object::toString)
+                        .reduce("", (acc, x) -> acc + x);
+                System.out.println(getLocalName() + "'s randomly updated prices: " + listOfUpdatedPricesAsString);
             }
         };
     }
