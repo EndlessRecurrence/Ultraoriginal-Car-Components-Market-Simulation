@@ -7,9 +7,8 @@ import jade.domain.DFService;
 import jade.domain.FIPAException;
 import jade.util.Logger;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -159,12 +158,20 @@ public class SupplierAgent extends Agent {
         throw new IOException("Message " + request.getPerformative() + " with content " + request.getContent() + "and performative " + ACLMessage.getPerformative(request.getPerformative()) + " not understood.");
     }
 
-    private void handleBrokerPriceRequest(ACLMessage request) throws IOException {
-        String componentTypeAsString = request.getContent();
-        System.out.println("Supplier " + getLocalName() + " received price request from " + brokerAgents[0].getLocalName() + " for " + componentTypeAsString);
-        CarComponentType type = CarComponentType.valueOf(componentTypeAsString);
+    private void handleBrokerPriceRequest(ACLMessage request) throws IOException, ClassNotFoundException {
+        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
+        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
+        PriceInformation priceRequestFromBroker = (PriceInformation) objectIn.readObject();
+        objectIn.close();
+        byteIn.close();
 
-        PriceInformation price = new PriceInformation(this.getAID(), prices.get(type), type);
+        String componentTypeAsString = priceRequestFromBroker.getType().name();
+        System.out.println("Supplier " + getLocalName() + " received price request from " + brokerAgents[0].getLocalName() + " for " + componentTypeAsString);
+
+
+        PriceInformation price = new PriceInformation(this.getAID(), prices.get(priceRequestFromBroker.getType()), priceRequestFromBroker.getType());
+        price.setDestinationAid(priceRequestFromBroker.getDestinationAid());
         ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
         ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
         objectOut.writeObject(price);
@@ -181,7 +188,7 @@ public class SupplierAgent extends Agent {
         System.out.println("Supplier " + getLocalName() + " sent " + componentTypeAsString + " price information to " + brokerAgents[0].getLocalName());
     }
 
-    private void handleRequest(ACLMessage request) throws IOException {
+    private void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
         switch (request.getPerformative()) {
             case ACLMessage.REQUEST -> handleBrokerPriceRequest(request);
             default -> handleUnknownRequestMessage(request);
@@ -196,7 +203,7 @@ public class SupplierAgent extends Agent {
                 if (message != null) {
                     try {
                         handleRequest(message);
-                    } catch (IOException e) {
+                    } catch (IOException | ClassNotFoundException e) {
                         e.printStackTrace();
                         throw new RuntimeException(e);
                     }

@@ -9,21 +9,19 @@ import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
 
 import java.awt.image.AreaAveragingScaleFilter;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Stream;
-import java.util.Base64;
 
 public class BrokerAgent extends Agent {
     private List<AID> suppliers;
+    private Map<AID, List<PriceInformation>> aidPriceMap;
 
     protected void setup() {
         System.out.println("Broker agent " + getLocalName() + " has started...");
         this.suppliers = new ArrayList<>();
+        this.aidPriceMap = new HashMap<>();
         SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
         initializationBehaviour.addSubBehaviour(createDfServiceRegistrationBehaviour());
         initializationBehaviour.addSubBehaviour(createRequestHandlingBehaviour());
@@ -58,10 +56,25 @@ public class BrokerAgent extends Agent {
         Stream.of(suppliers).forEach(System.out::println);
     }
 
-    private void handleConsumerPriceRequest(ACLMessage request) {
+    private void handleConsumerPriceRequest(ACLMessage request) throws IOException {
         System.out.println("Broker " + getLocalName() + " got a call-for-proposal price request from " + request.getSender().getLocalName() + " for a " + request.getContent() + " component.");
         ACLMessage priceRequest = new ACLMessage(ACLMessage.REQUEST);
-        priceRequest.setContent(request.getContent());
+        String componentTypeAsString = request.getContent();
+        CarComponentType type = CarComponentType.valueOf(componentTypeAsString);
+        aidPriceMap.put(request.getSender(), new ArrayList<>());
+
+        PriceInformation price = new PriceInformation(null, null, type);
+        price.setDestinationAid(request.getSender());
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
+        objectOut.writeObject(price);
+        objectOut.flush();
+        byte[] serializedObject = byteOut.toByteArray();
+        objectOut.close();
+        byteOut.close();
+        String serializedObjectString = Base64.getEncoder().encodeToString(serializedObject);
+
+        priceRequest.setContent(serializedObjectString);
         suppliers.forEach(supplier -> priceRequest.addReceiver(supplier));
         send(priceRequest);
     }
@@ -69,12 +82,34 @@ public class BrokerAgent extends Agent {
     private void handleSupplierPriceInform(ACLMessage request) throws IOException, ClassNotFoundException {
         System.out.println("Broker " + getLocalName() + " received the following serialized supplier price inform message from " + request.getSender().getLocalName());
         System.out.println(request.getContent());
+
         byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
         ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
         ObjectInputStream objectIn = new ObjectInputStream(byteIn);
         PriceInformation supplierPriceInformation = (PriceInformation) objectIn.readObject();
         objectIn.close();
         byteIn.close();
+
+        List<PriceInformation> prices = aidPriceMap.get(supplierPriceInformation.getDestinationAid());
+        prices.add(supplierPriceInformation);
+        aidPriceMap.put(supplierPriceInformation.getDestinationAid(), prices);
+
+        if (prices.size() == suppliers.size()) {
+            ACLMessage pricesToSendToConsumer = new ACLMessage(ACLMessage.PROPOSE);
+
+            ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+            ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
+            objectOut.writeObject(prices);
+            objectOut.flush();
+            byte[] serializedObject = byteOut.toByteArray();
+            objectOut.close();
+            byteOut.close();
+            String serializedPrices = Base64.getEncoder().encodeToString(serializedObject);
+
+            pricesToSendToConsumer.addReceiver(supplierPriceInformation.getDestinationAid());
+            pricesToSendToConsumer.setContent(serializedPrices);
+            send(pricesToSendToConsumer);
+        }
     }
 
     private void handleUnknownRequestMessage(ACLMessage request) {

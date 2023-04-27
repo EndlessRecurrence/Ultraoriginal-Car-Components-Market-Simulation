@@ -6,12 +6,13 @@ public class PriceInformation implements Serializable {
     private AID supplier;
     private Double price;
     private CarComponentType type;
-
+    private AID destinationAid;
 
     public PriceInformation(AID supplier, Double price, CarComponentType type) {
         this.supplier = supplier;
         this.price = price;
         this.type = type;
+        this.destinationAid = null;
     }
 
     public AID getSupplier() {
@@ -36,6 +37,14 @@ public class PriceInformation implements Serializable {
 
     public void setType(CarComponentType type) {
         this.type = type;
+    }
+
+    public AID getDestinationAid() {
+        return destinationAid;
+    }
+
+    public void setDestinationAid(AID destinationAid) {
+        this.destinationAid = destinationAid;
     }
 
 }
