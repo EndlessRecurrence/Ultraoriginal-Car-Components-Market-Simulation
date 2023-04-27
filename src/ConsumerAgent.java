@@ -82,14 +82,14 @@ public class ConsumerAgent extends Agent {
 
                 try {
                     ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(receivedComponentPricesMessage.getContent().getBytes()));
-                    List<Pair<AID, Double>> deserializedListOfPrices = (List<Pair<AID, Double>>) ois.readObject();
-                    Optional<Pair<AID, Double>> minimumPriceOptional = deserializedListOfPrices.stream()
-                            .min(Comparator.comparingDouble(Pair::getSecond));
-                    Pair<AID, Double> minimumPrice = minimumPriceOptional.get();
-                    payMoney(minimumPrice.getSecond());
+                    List<PriceInformation> deserializedListOfPrices = (List<PriceInformation>) ois.readObject();
+                    Optional<PriceInformation> minimumPriceOptional = deserializedListOfPrices.stream()
+                            .min(Comparator.comparingDouble(PriceInformation::getPrice));
+                    PriceInformation minimumPrice = minimumPriceOptional.get();
+                    payMoney(minimumPrice.getPrice());
                     System.out.println("Consumer " + getLocalName() + " pays for the " + componentTypeAsString + ".");
 
-                    Pair<AID, CarComponentType> offerAcceptMessage = new Pair<AID, CarComponentType>(minimumPrice.getFirst(), CarComponentType.valueOf(componentTypeAsString));
+                    PriceInformation offerAcceptMessage = new PriceInformation(minimumPrice.getSupplier(), minimumPrice.getPrice(), minimumPrice.getType());
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     ObjectOutputStream oos = new ObjectOutputStream(baos);
                     oos.writeObject(offerAcceptMessage);

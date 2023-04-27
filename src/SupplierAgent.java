@@ -7,11 +7,15 @@ import jade.domain.DFService;
 import jade.domain.FIPAException;
 import jade.util.Logger;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import java.util.Base64;
 
 public class SupplierAgent extends Agent {
     private AID[] brokerAgents;
@@ -27,7 +31,11 @@ public class SupplierAgent extends Agent {
         SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
         initializationBehaviour.addSubBehaviour(createBrokerSearchBehaviour());
         initializationBehaviour.addSubBehaviour(createBrokerRegistrationBehaviour());
-        initializationBehaviour.addSubBehaviour(createPriceUpdateBehaviour());
+        ParallelBehaviour requestHandlingAndPriceUpdateBehaviour = new ParallelBehaviour();
+        requestHandlingAndPriceUpdateBehaviour.addSubBehaviour(createRequestHandlingBehaviour());
+        requestHandlingAndPriceUpdateBehaviour.addSubBehaviour(createPriceUpdateBehaviour());
+        initializationBehaviour.addSubBehaviour(requestHandlingAndPriceUpdateBehaviour);
+
         addBehaviour(initializationBehaviour);
     }
 
@@ -139,6 +147,62 @@ public class SupplierAgent extends Agent {
                         .map(Object::toString)
                         .reduce("", (acc, x) -> acc + x);
                 System.out.println(getLocalName() + "'s randomly updated prices: " + listOfUpdatedPricesAsString);
+            }
+        };
+    }
+
+    private void handleUnknownRequestMessage(ACLMessage request) throws IOException {
+        System.out.println("Supplier " + getLocalName() + " received a message that is not understood.");
+        ACLMessage response = new ACLMessage(ACLMessage.NOT_UNDERSTOOD);
+        response.addReceiver(request.getSender());
+        send(response);
+        throw new IOException("Message " + request.getPerformative() + " with content " + request.getContent() + "and performative " + ACLMessage.getPerformative(request.getPerformative()) + " not understood.");
+    }
+
+    private void handleBrokerPriceRequest(ACLMessage request) throws IOException {
+        String componentTypeAsString = request.getContent();
+        System.out.println("Supplier " + getLocalName() + " received price request from " + brokerAgents[0].getLocalName() + " for " + componentTypeAsString);
+        CarComponentType type = CarComponentType.valueOf(componentTypeAsString);
+
+        PriceInformation price = new PriceInformation(this.getAID(), prices.get(type), type);
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
+        objectOut.writeObject(price);
+        objectOut.flush();
+        byte[] serializedObject = byteOut.toByteArray();
+        objectOut.close();
+        byteOut.close();
+        String serializedObjectString = Base64.getEncoder().encodeToString(serializedObject);
+
+        ACLMessage priceMessage = new ACLMessage(ACLMessage.INFORM);
+        priceMessage.addReceiver(brokerAgents[0]);
+        priceMessage.setContent(serializedObjectString);
+        send(priceMessage);
+        System.out.println("Supplier " + getLocalName() + " sent " + componentTypeAsString + " price information to " + brokerAgents[0].getLocalName());
+    }
+
+    private void handleRequest(ACLMessage request) throws IOException {
+        switch (request.getPerformative()) {
+            case ACLMessage.REQUEST -> handleBrokerPriceRequest(request);
+            default -> handleUnknownRequestMessage(request);
+        }
+    }
+
+    private Behaviour createRequestHandlingBehaviour() {
+        return new CyclicBehaviour() {
+            @Override
+            public void action() {
+                ACLMessage message = myAgent.receive();
+                if (message != null) {
+                    try {
+                        handleRequest(message);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    block();
+                }
             }
         };
     }

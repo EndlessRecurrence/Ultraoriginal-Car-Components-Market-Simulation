@@ -9,9 +9,14 @@ import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
 
 import java.awt.image.AreaAveragingScaleFilter;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import java.util.Base64;
 
 public class BrokerAgent extends Agent {
     private List<AID> suppliers;
@@ -54,19 +59,36 @@ public class BrokerAgent extends Agent {
     }
 
     private void handleConsumerPriceRequest(ACLMessage request) {
-        System.out.println("Broker " + getLocalName() + " got a call-for-proposal price request from " + request.getSender().getLocalName());
+        System.out.println("Broker " + getLocalName() + " got a call-for-proposal price request from " + request.getSender().getLocalName() + " for a " + request.getContent() + " component.");
+        ACLMessage priceRequest = new ACLMessage(ACLMessage.REQUEST);
+        priceRequest.setContent(request.getContent());
+        suppliers.forEach(supplier -> priceRequest.addReceiver(supplier));
+        send(priceRequest);
+    }
+
+    private void handleSupplierPriceInform(ACLMessage request) throws IOException, ClassNotFoundException {
+        System.out.println("Broker " + getLocalName() + " received the following serialized supplier price inform message from " + request.getSender().getLocalName());
+        System.out.println(request.getContent());
+        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
+        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
+        PriceInformation supplierPriceInformation = (PriceInformation) objectIn.readObject();
+        objectIn.close();
+        byteIn.close();
     }
 
     private void handleUnknownRequestMessage(ACLMessage request) {
+        System.out.println("Broker " + getLocalName() + " got an unknown message from " + request.getSender().getLocalName() + " with performative " + ACLMessage.getPerformative(request.getPerformative()));
         ACLMessage response = new ACLMessage(ACLMessage.NOT_UNDERSTOOD);
         response.addReceiver(request.getSender());
         send(response);
     }
 
-    private void handleRequest(ACLMessage request) {
+    private void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
         switch (request.getPerformative()) {
             case ACLMessage.SUBSCRIBE -> handleSupplierSubscriptionRequest(request);
             case ACLMessage.CFP -> handleConsumerPriceRequest(request);
+            case ACLMessage.INFORM -> handleSupplierPriceInform(request);
             default -> handleUnknownRequestMessage(request);
         }
     }
@@ -77,7 +99,12 @@ public class BrokerAgent extends Agent {
             public void action() {
                 ACLMessage message = myAgent.receive();
                 if (message != null) {
-                    handleRequest(message);
+                    try {
+                        handleRequest(message);
+                    } catch (IOException | ClassNotFoundException e) {
+                        e.printStackTrace();
+                        throw new RuntimeException(e);
+                    }
                 } else {
                     block();
                 }
