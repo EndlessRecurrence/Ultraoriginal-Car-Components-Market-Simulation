@@ -5,6 +5,7 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.DFService;
 import jade.domain.FIPAException;
+import jade.util.AccessControlList;
 import jade.util.Logger;
 
 import java.io.*;
@@ -19,14 +20,18 @@ import java.util.Base64;
 public class SupplierAgent extends Agent {
     private AID[] brokerAgents;
     private Map<CarComponentType, Integer> stock;
+    private Double balance;
     public static Map<CarComponentType, Double> referenceComponentPrices;
     private Map<CarComponentType, Double> prices;
 
     protected void setup() {
         System.out.println("Supplier agent " + getLocalName() + " has started...");
+
         referenceComponentPrices = initializeReferenceComponentPrices();
         this.prices = initializeComponentPrices();
         this.stock = initializeStock();
+        this.balance = 0.0;
+
         SequentialBehaviour initializationBehaviour = new SequentialBehaviour();
         initializationBehaviour.addSubBehaviour(createBrokerSearchBehaviour());
         initializationBehaviour.addSubBehaviour(createBrokerRegistrationBehaviour());
@@ -188,9 +193,41 @@ public class SupplierAgent extends Agent {
         System.out.println("Supplier " + getLocalName() + " sent " + componentTypeAsString + " price information to " + brokerAgents[0].getLocalName());
     }
 
+    private void handleComponentRequestFromBroker(ACLMessage message) throws IOException, ClassNotFoundException {
+        System.out.println("Supplier " + getLocalName() + " received a component request from " + brokerAgents[0].getLocalName());
+
+        byte[] serializedObjectBytes = Base64.getDecoder().decode(message.getContent().getBytes(StandardCharsets.UTF_8));
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
+        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
+        PriceInformation componentRequestFromBroker = (PriceInformation) objectIn.readObject();
+        objectIn.close();
+        byteIn.close();
+
+        this.balance += componentRequestFromBroker.getPrice();
+        Integer currentStock = this.stock.get(componentRequestFromBroker.getType());
+        this.stock.put(componentRequestFromBroker.getType(), currentStock - 1);
+
+        ComponentDeliveryUnit unit = new ComponentDeliveryUnit(new CarComponent(componentRequestFromBroker.getType(), componentRequestFromBroker.getPrice()), this.getAID(), componentRequestFromBroker.getDestinationAid());
+
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
+        objectOut.writeObject(unit);
+        objectOut.flush();
+        byte[] serializedObject = byteOut.toByteArray();
+        objectOut.close();
+        byteOut.close();
+        String serializedDeliveryUnit = Base64.getEncoder().encodeToString(serializedObject);
+        ACLMessage deliveryUnitResponseToBroker = new ACLMessage(ACLMessage.AGREE);
+        deliveryUnitResponseToBroker.addReceiver(brokerAgents[0]);
+        deliveryUnitResponseToBroker.setContent(serializedDeliveryUnit);
+        send(deliveryUnitResponseToBroker);
+        System.out.println("Supplier " + getLocalName() + " sent the requested component to " + brokerAgents[0].getLocalName());
+    }
+
     private void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
         switch (request.getPerformative()) {
             case ACLMessage.REQUEST -> handleBrokerPriceRequest(request);
+            case ACLMessage.ACCEPT_PROPOSAL -> handleComponentRequestFromBroker(request);
             default -> handleUnknownRequestMessage(request);
         }
     }

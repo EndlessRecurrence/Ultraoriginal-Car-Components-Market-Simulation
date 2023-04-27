@@ -112,6 +112,27 @@ public class BrokerAgent extends Agent {
         }
     }
 
+    private void handleAcceptedPriceProposal(ACLMessage request) throws IOException, ClassNotFoundException {
+        System.out.println("Broker " + getLocalName() + " received an accepted price proposal answer from " + request.getSender().getLocalName());
+
+        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
+        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
+        PriceInformation priceProposalAcceptMessage = (PriceInformation) objectIn.readObject();
+        objectIn.close();
+        byteIn.close();
+
+        ACLMessage productRetrievalRequestMessage = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+        productRetrievalRequestMessage.addReceiver(priceProposalAcceptMessage.getSupplier());
+        productRetrievalRequestMessage.setContent(request.getContent());
+        send(productRetrievalRequestMessage);
+    }
+
+    private void handleDeliveryUnitFromSupplier(ACLMessage message) {
+        System.out.println("Broker " + getLocalName() + " received delivery unit from supplier " + message.getSender().getLocalName());
+
+    }
+
     private void handleUnknownRequestMessage(ACLMessage request) {
         System.out.println("Broker " + getLocalName() + " got an unknown message from " + request.getSender().getLocalName() + " with performative " + ACLMessage.getPerformative(request.getPerformative()));
         ACLMessage response = new ACLMessage(ACLMessage.NOT_UNDERSTOOD);
@@ -124,6 +145,8 @@ public class BrokerAgent extends Agent {
             case ACLMessage.SUBSCRIBE -> handleSupplierSubscriptionRequest(request);
             case ACLMessage.CFP -> handleConsumerPriceRequest(request);
             case ACLMessage.INFORM -> handleSupplierPriceInform(request);
+            case ACLMessage.ACCEPT_PROPOSAL -> handleAcceptedPriceProposal(request);
+            case ACLMessage.AGREE -> handleDeliveryUnitFromSupplier(request);
             default -> handleUnknownRequestMessage(request);
         }
     }
