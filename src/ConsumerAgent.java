@@ -74,7 +74,7 @@ public class ConsumerAgent extends Agent {
     }
 
     private Behaviour createConsumerPriceRequestAndRespondBehaviour() {
-        return new TickerBehaviour(this, 10000) {
+        return new TickerBehaviour(this, 5000) {
             @Override
             protected void onTick() {
                 String componentTypeAsString = pickRandomComponentType();
@@ -88,13 +88,7 @@ public class ConsumerAgent extends Agent {
     }
 
     private void receiveBrokerPrices(ACLMessage message) throws IOException, ClassNotFoundException {
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(message.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        List<PriceInformation> deserializedListOfPrices = (ArrayList<PriceInformation>) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
-
+        List<PriceInformation> deserializedListOfPrices = Base64Serializer.deserialize(message.getContent());
         String componentTypeAsString = deserializedListOfPrices.get(0).getType().name();
 
         System.out.println("Consumer " + getLocalName() + " received " + componentTypeAsString + " price proposals from the broker.");
@@ -108,15 +102,7 @@ public class ConsumerAgent extends Agent {
 
             PriceInformation offerAcceptPriceInformation = new PriceInformation(minimumPrice.getSupplier(), minimumPrice.getPrice(), minimumPrice.getType());
             offerAcceptPriceInformation.setDestinationAid(this.getAID());
-
-            ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-            ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
-            objectOut.writeObject(offerAcceptPriceInformation);
-            objectOut.flush();
-            byte[] serializedObject = byteOut.toByteArray();
-            objectOut.close();
-            byteOut.close();
-            String serializedAcceptedOffer = Base64.getEncoder().encodeToString(serializedObject);
+            String serializedAcceptedOffer = Base64Serializer.serialize(offerAcceptPriceInformation);
 
             ACLMessage componentRequest = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
             componentRequest.addReceiver(brokerAgents[0]);
@@ -127,13 +113,7 @@ public class ConsumerAgent extends Agent {
 
             MessageTemplate template = MessageTemplate.MatchPerformative(ACLMessage.AGREE);
             ACLMessage boughtProductAsAclMessage = blockingReceive(template);
-
-            serializedObjectBytes = Base64.getDecoder().decode(boughtProductAsAclMessage.getContent().getBytes(StandardCharsets.UTF_8));
-            byteIn = new ByteArrayInputStream(serializedObjectBytes);
-            objectIn = new ObjectInputStream(byteIn);
-            ComponentDeliveryUnit deliveryUnitMessage = (ComponentDeliveryUnit) objectIn.readObject();
-            objectIn.close();
-            byteIn.close();
+            ComponentDeliveryUnit deliveryUnitMessage = Base64Serializer.deserialize(boughtProductAsAclMessage.getContent());
 
             ownedCarComponents.add(deliveryUnitMessage.getComponent());
             System.out.println("Consumer " + getLocalName() + " received bought " + deliveryUnitMessage.getComponent().type() + " sent by " + deliveryUnitMessage.getSource().getLocalName() + " through broker " + brokerAgents[0].getLocalName());

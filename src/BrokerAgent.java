@@ -65,17 +65,10 @@ public class BrokerAgent extends Agent {
 
         PriceInformation price = new PriceInformation(null, null, type);
         price.setDestinationAid(request.getSender());
-        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
-        objectOut.writeObject(price);
-        objectOut.flush();
-        byte[] serializedObject = byteOut.toByteArray();
-        objectOut.close();
-        byteOut.close();
-        String serializedObjectString = Base64.getEncoder().encodeToString(serializedObject);
+        String serializedObjectString = Base64Serializer.serialize(price);
 
         priceRequest.setContent(serializedObjectString);
-        suppliers.forEach(supplier -> priceRequest.addReceiver(supplier));
+        suppliers.forEach(priceRequest::addReceiver);
         send(priceRequest);
     }
 
@@ -83,12 +76,7 @@ public class BrokerAgent extends Agent {
         System.out.println("Broker " + getLocalName() + " received the following serialized supplier price inform message from " + request.getSender().getLocalName());
         System.out.println(request.getContent());
 
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        PriceInformation supplierPriceInformation = (PriceInformation) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
+        PriceInformation supplierPriceInformation = Base64Serializer.deserialize(request.getContent());
 
         List<PriceInformation> prices = aidPriceMap.get(supplierPriceInformation.getDestinationAid());
         prices.add(supplierPriceInformation);
@@ -96,16 +84,7 @@ public class BrokerAgent extends Agent {
 
         if (prices.size() == suppliers.size()) {
             ACLMessage pricesToSendToConsumer = new ACLMessage(ACLMessage.PROPOSE);
-
-            ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-            ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
-            objectOut.writeObject(prices);
-            objectOut.flush();
-            byte[] serializedObject = byteOut.toByteArray();
-            objectOut.close();
-            byteOut.close();
-            String serializedPrices = Base64.getEncoder().encodeToString(serializedObject);
-
+            String serializedPrices = Base64Serializer.serialize(prices);
             pricesToSendToConsumer.addReceiver(supplierPriceInformation.getDestinationAid());
             pricesToSendToConsumer.setContent(serializedPrices);
             send(pricesToSendToConsumer);
@@ -115,12 +94,7 @@ public class BrokerAgent extends Agent {
     private void handleAcceptedPriceProposal(ACLMessage request) throws IOException, ClassNotFoundException {
         System.out.println("Broker " + getLocalName() + " received an accepted price proposal answer from " + request.getSender().getLocalName());
 
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        PriceInformation priceProposalAcceptMessage = (PriceInformation) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
+        PriceInformation priceProposalAcceptMessage = Base64Serializer.deserialize(request.getContent());
 
         ACLMessage productRetrievalRequestMessage = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
         productRetrievalRequestMessage.addReceiver(priceProposalAcceptMessage.getSupplier());
@@ -130,13 +104,7 @@ public class BrokerAgent extends Agent {
 
     private void handleDeliveryUnitFromSupplier(ACLMessage message) throws IOException, ClassNotFoundException {
         System.out.println("Broker " + getLocalName() + " received delivery unit from supplier " + message.getSender().getLocalName());
-
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(message.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        ComponentDeliveryUnit deliveryUnitMessage = (ComponentDeliveryUnit) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
+        ComponentDeliveryUnit deliveryUnitMessage = Base64Serializer.deserialize(message.getContent());
 
         message.removeReceiver(this.getAID());
         message.addReceiver(deliveryUnitMessage.getDestination());

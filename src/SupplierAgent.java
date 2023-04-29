@@ -143,7 +143,6 @@ public class SupplierAgent extends Agent {
         return new TickerBehaviour(this, 5000) {
             @Override
             protected void onTick() {
-                new CarComponent(CarComponentType.ALTERNATOR, 500.0);
                 referenceComponentPrices.entrySet().stream()
                         .map(typePricePair -> new CarComponent(typePricePair.getKey(), generateUpdatedPrice(typePricePair.getKey(), typePricePair.getValue())))
                         .forEach(carComponent -> prices.put(carComponent.type(), carComponent.price()));
@@ -164,27 +163,14 @@ public class SupplierAgent extends Agent {
     }
 
     private void handleBrokerPriceRequest(ACLMessage request) throws IOException, ClassNotFoundException {
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(request.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        PriceInformation priceRequestFromBroker = (PriceInformation) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
+        PriceInformation priceRequestFromBroker = Base64Serializer.deserialize(request.getContent());
 
         String componentTypeAsString = priceRequestFromBroker.getType().name();
         System.out.println("Supplier " + getLocalName() + " received price request from " + brokerAgents[0].getLocalName() + " for " + componentTypeAsString);
 
-
         PriceInformation price = new PriceInformation(this.getAID(), prices.get(priceRequestFromBroker.getType()), priceRequestFromBroker.getType());
         price.setDestinationAid(priceRequestFromBroker.getDestinationAid());
-        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
-        objectOut.writeObject(price);
-        objectOut.flush();
-        byte[] serializedObject = byteOut.toByteArray();
-        objectOut.close();
-        byteOut.close();
-        String serializedObjectString = Base64.getEncoder().encodeToString(serializedObject);
+        String serializedObjectString = Base64Serializer.serialize(price);
 
         ACLMessage priceMessage = new ACLMessage(ACLMessage.INFORM);
         priceMessage.addReceiver(brokerAgents[0]);
@@ -195,28 +181,15 @@ public class SupplierAgent extends Agent {
 
     private void handleComponentRequestFromBroker(ACLMessage message) throws IOException, ClassNotFoundException {
         System.out.println("Supplier " + getLocalName() + " received a component request from " + brokerAgents[0].getLocalName());
-
-        byte[] serializedObjectBytes = Base64.getDecoder().decode(message.getContent().getBytes(StandardCharsets.UTF_8));
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(serializedObjectBytes);
-        ObjectInputStream objectIn = new ObjectInputStream(byteIn);
-        PriceInformation componentRequestFromBroker = (PriceInformation) objectIn.readObject();
-        objectIn.close();
-        byteIn.close();
+        PriceInformation componentRequestFromBroker = Base64Serializer.deserialize(message.getContent());
 
         this.balance += componentRequestFromBroker.getPrice();
         Integer currentStock = this.stock.get(componentRequestFromBroker.getType());
         this.stock.put(componentRequestFromBroker.getType(), currentStock - 1);
 
         ComponentDeliveryUnit unit = new ComponentDeliveryUnit(new CarComponent(componentRequestFromBroker.getType(), componentRequestFromBroker.getPrice()), this.getAID(), componentRequestFromBroker.getDestinationAid());
+        String serializedDeliveryUnit = Base64Serializer.serialize(unit);
 
-        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
-        ObjectOutputStream objectOut = new ObjectOutputStream(byteOut);
-        objectOut.writeObject(unit);
-        objectOut.flush();
-        byte[] serializedObject = byteOut.toByteArray();
-        objectOut.close();
-        byteOut.close();
-        String serializedDeliveryUnit = Base64.getEncoder().encodeToString(serializedObject);
         ACLMessage deliveryUnitResponseToBroker = new ACLMessage(ACLMessage.AGREE);
         deliveryUnitResponseToBroker.addReceiver(brokerAgents[0]);
         deliveryUnitResponseToBroker.setContent(serializedDeliveryUnit);
