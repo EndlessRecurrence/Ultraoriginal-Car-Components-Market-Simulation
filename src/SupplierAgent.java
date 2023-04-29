@@ -1,24 +1,12 @@
-import jade.core.*;
 import jade.core.behaviours.*;
 import jade.lang.acl.ACLMessage;
-import jade.domain.FIPAAgentManagement.ServiceDescription;
-import jade.domain.FIPAAgentManagement.DFAgentDescription;
-import jade.domain.DFService;
-import jade.domain.FIPAException;
-import jade.util.AccessControlList;
-import jade.util.Logger;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-import java.util.Base64;
 
-public class SupplierAgent extends Agent {
-    private AID[] brokerAgents;
+public class SupplierAgent extends BrokerClientAgent {
     private Map<CarComponentType, Integer> stock;
     private Double balance;
     public static Map<CarComponentType, Double> referenceComponentPrices;
@@ -68,26 +56,7 @@ public class SupplierAgent extends Agent {
     }
 
     private Behaviour createBrokerSearchBehaviour() {
-        return new WakerBehaviour(this, 2000) {
-            @Override
-            protected void onWake() {
-                DFAgentDescription template = new DFAgentDescription();
-                ServiceDescription serviceDescription = new ServiceDescription();
-                serviceDescription.setType("car-components-trading-brokership");
-                template.addServices(serviceDescription);
-                try {
-                    DFAgentDescription[] result = DFService.search(myAgent, template);
-                    brokerAgents = new AID[result.length];
-                    for (int i = 0; i < result.length; ++i) {
-                        brokerAgents[i] = result[i].getName();
-                    }
-                    System.out.println("Agents detected by " + getLocalName() + ":");
-                    Stream.of(brokerAgents).forEach(System.out::println);
-                } catch (FIPAException fe) {
-                    fe.printStackTrace();
-                }
-            }
-        };
+        return new BrokerSearchBehaviour(this, 2000);
     }
 
     private Behaviour createBrokerRegistrationBehaviour() {
@@ -197,7 +166,7 @@ public class SupplierAgent extends Agent {
         System.out.println("Supplier " + getLocalName() + " sent the requested component to " + brokerAgents[0].getLocalName());
     }
 
-    private void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
+    protected void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
         switch (request.getPerformative()) {
             case ACLMessage.REQUEST -> handleBrokerPriceRequest(request);
             case ACLMessage.ACCEPT_PROPOSAL -> handleComponentRequestFromBroker(request);
@@ -206,22 +175,7 @@ public class SupplierAgent extends Agent {
     }
 
     private Behaviour createRequestHandlingBehaviour() {
-        return new CyclicBehaviour() {
-            @Override
-            public void action() {
-                ACLMessage message = myAgent.receive();
-                if (message != null) {
-                    try {
-                        handleRequest(message);
-                    } catch (IOException | ClassNotFoundException e) {
-                        e.printStackTrace();
-                        throw new RuntimeException(e);
-                    }
-                } else {
-                    block();
-                }
-            }
-        };
+        return new RequestHandlingBehaviour();
     }
 
     protected void takeDown() {

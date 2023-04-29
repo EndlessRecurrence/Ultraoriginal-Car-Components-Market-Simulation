@@ -1,21 +1,11 @@
-import jade.core.*;
 import jade.core.behaviours.*;
 import jade.lang.acl.ACLMessage;
-import jade.domain.FIPAAgentManagement.ServiceDescription;
-import jade.domain.FIPAAgentManagement.DFAgentDescription;
-import jade.domain.DFService;
-import jade.domain.FIPAException;
 import jade.lang.acl.MessageTemplate;
-import jade.tools.sniffer.Message;
-import jade.util.Logger;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.Stream;
 
-public class ConsumerAgent extends Agent {
-    private AID[] brokerAgents;
+public class ConsumerAgent extends BrokerClientAgent {
     private String[] buyableComponents;
     private Double balance;
     private List<CarComponent> ownedCarComponents;
@@ -44,26 +34,7 @@ public class ConsumerAgent extends Agent {
     }
 
     private Behaviour createBrokerSearchBehaviour() {
-        return new WakerBehaviour(this, 2000) {
-            @Override
-            protected void onWake() {
-                DFAgentDescription template = new DFAgentDescription();
-                ServiceDescription serviceDescription = new ServiceDescription();
-                serviceDescription.setType("car-components-trading-brokership");
-                template.addServices(serviceDescription);
-                try {
-                    DFAgentDescription[] result = DFService.search(myAgent, template);
-                    brokerAgents = new AID[result.length];
-                    for (int i = 0; i < result.length; ++i) {
-                        brokerAgents[i] = result[i].getName();
-                    }
-                    System.out.println("Agents detected by " + getLocalName() + ":");
-                    Stream.of(brokerAgents).forEach(System.out::println);
-                } catch (FIPAException fe) {
-                    fe.printStackTrace();
-                }
-            }
-        };
+        return new BrokerSearchBehaviour(this, 2000);
     }
 
     private String pickRandomComponentType() {
@@ -131,7 +102,7 @@ public class ConsumerAgent extends Agent {
         send(response);
     }
 
-    private void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
+    protected void handleRequest(ACLMessage request) throws IOException, ClassNotFoundException {
         switch (request.getPerformative()) {
             case ACLMessage.PROPOSE -> receiveBrokerPrices(request);
             default -> handleUnknownMessage(request);
@@ -139,22 +110,7 @@ public class ConsumerAgent extends Agent {
     }
 
     private Behaviour createRequestHandler() {
-        return new CyclicBehaviour() {
-            @Override
-            public void action() {
-                ACLMessage message = myAgent.receive();
-                if (message != null) {
-                    try {
-                        handleRequest(message);
-                    } catch (IOException | ClassNotFoundException e) {
-                        e.printStackTrace();
-                        throw new RuntimeException(e);
-                    }
-                } else {
-                    block();
-                }
-            }
-        };
+        return new RequestHandlingBehaviour();
     }
 
     protected void takeDown() {
